@@ -141,3 +141,25 @@ QUERY PLAN
 
 L. Kalimat: “Yang paling membingungkan dari keluaran ini adalah ...”
 Yang paling membingungkan dari keluaran ini adalah adanya banyak baris dengan tulisan 'Seq Scan', 'Hash Join', dan angka-angka seperti 'cost=...' serta 'rows=...'. Saya belum paham apa arti dari angka cost tersebut dan mengapa ada beberapa langkah yang harus dilalui database sebelum menghasilkan jawaban akhir.
+
+M. Tautan repositori Git tim
+https://github.com/salsabilasalwarizki/msbd-2026
+
+N. Daftar commit masing-masing anggota
+1. Salsabila Salwa Rizki (251402123) (Project Manager) : Konfigurasi Awal & Docker (Langkah 1 & 2)
+2. Sina Mahdi Sitanggang (251402008) : Koneksi psql & DBeaver (Langkah 3)
+3. Nadia Stevany Br Situmorang (251402073) : Verifikasi Query (Langkah 4)
+4. Jesqueen Maria Purba (251402099) : Struktur Folder & Laporan (Langkah 5)
+
+
+
+
+# Tantangan Tambahan - Eksperimen Index
+
+## Waktu Pencarian Sebelum Index
+Time: 2411.789 ms (00:02.412)
+## Waktu Pencarian Setelah Index
+Time: 12.543 ms
+
+## Kesimpulan
+Jadi, perbedaannya sangat jauh. Awalnya pas belum ada index, database harus baca satu-satu dari 2 juta baris (Sequential Scan) dan butuh waktu lebih dari 2 detik. Tapi setelah kita bikin index, database langsung tau harus nyari di mana (Index Scan) dan waktunya turun drastis jadi cuma beberapa milidetik. Ini ngebuktiin kalau index itu super penting buat ngebutin query, apalagi kalau datanya udah jutaan. Walaupun proses bikin index-nya sendiri lumayan makan waktu (sekitar 50 detik di percobaan ini), tapi hasilnya sangat worth it banget buat performa pencarian ke depannya.
