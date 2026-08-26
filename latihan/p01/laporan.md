@@ -1,15 +1,28 @@
+Laporan Latihan 1 - Pertemuan 1 - Kelompok 9 - Manajemen Sistem Basis Data
+
+Anggota Kelompok :
+- Sina Mahdi Sitanggang (251402008)
+- Nadia Stevany Br Situmorang (251402073)
+- Jesqueen Maria Purba (251402099)
+- Salsabila Salwa Rizki (251402123) : Project Manager
+
+
 A. Keluaran docker --version:
     Docker version 29.7.2, buid a7dcaa6
+
 B. Keluaran docker compose version
     Docker Compose version v5.4.0
+
 C. Keluaran docker compose ps
     NAME         IMAGE            COMMAND                  SERVICE    CREATED       STATUS                 PORTS
     msbd-mongo   mongo:8          "docker-entrypoint.s…"   mongo      3 hours ago   Up 3 hours             0.0.0.0:27017->27017/tcp, [::]:27017->27017/tcp
     msbd-pg      postgres:17      "docker-entrypoint.s…"   postgres   3 hours ago   Up 3 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
     msbd-redis   redis:7-alpine   "docker-entrypoint.s…"   redis      3 hours ago   Up 3 hours             0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+
 D. Keluaran SELECT version();
     PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
     (1 row)
+
 E. Jawaban tiga pertanyaan tentang Image, Container, dan Volume
     1. Apa yang dimaksud dengan Docker Image?
 
@@ -51,6 +64,7 @@ G. Perbandingan penggunaan psql dan DBeaver
         Jawaban: Melihat daftar database yang ada dengan perintah \l lebih cepat di psql karena cukup ketik satu perintah dan langsung muncul hasilnya, tanpa perlu navigasi menu.
     2. Satu aktivitas yang menurut Anda lebih cepat dilakukan menggunakan DBeaver.
         Jawaban: Melihat struktur tabel dan relasi antar tabel lebih cepat di DBeaver karena bisa langsung lihat ER Diagram secara visual tanpa perlu ketik query manual.
+
 H. Hasil query V1
 pagila=# SELECT count(*)
 FROM information_schema.tables
@@ -134,3 +148,15 @@ N. Daftar commit masing-masing anggota
 3. Nadia Stefany Br Situmorang (251402073) : Verifikasi Query (Langkah 4)
 4. Jesqueen Maria Purba (251402099) : Struktur Folder & Laporan (Langkah 5)
 
+
+
+
+# Tantangan Tambahan - Eksperimen Index
+
+## Waktu Pencarian Sebelum Index
+Time: 2411.789 ms (00:02.412)
+## Waktu Pencarian Setelah Index
+Time: 12.543 ms
+
+## Kesimpulan
+Jadi, perbedaannya sangat jauh. Awalnya pas belum ada index, database harus baca satu-satu dari 2 juta baris (Sequential Scan) dan butuh waktu lebih dari 2 detik. Tapi setelah kita bikin index, database langsung tau harus nyari di mana (Index Scan) dan waktunya turun drastis jadi cuma beberapa milidetik. Ini ngebuktiin kalau index itu super penting buat ngebutin query, apalagi kalau datanya udah jutaan. Walaupun proses bikin index-nya sendiri lumayan makan waktu (sekitar 50 detik di percobaan ini), tapi hasilnya sangat worth it banget buat performa pencarian ke depannya.
