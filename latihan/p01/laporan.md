@@ -67,3 +67,77 @@ G. Perbandingan penggunaan psql dan DBeaver
     2. Satu aktivitas yang menurut Anda lebih cepat dilakukan menggunakan DBeaver.
     
     Jawaban: Melihat struktur tabel dan relasi antar tabel lebih cepat di DBeaver karena bisa langsung lihat ER Diagram secara visual tanpa perlu ketik query manual.
+
+H. Hasil query V1
+pagila=# SELECT count(*)
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_type = 'BASE TABLE';
+ count 
+-------
+    21
+(1 row)
+
+I. Hasil query V2
+pagila=# SELECT relname,
+       pg_size_pretty(pg_total_relation_size(relid)) AS ukuran
+FROM pg_catalog.pg_statio_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 10;
+     relname      | ukuran  
+------------------+---------
+ rental           | 2352 kB
+ film             | 952 kB
+ payment_p2017_04 | 656 kB
+ payment_p2017_03 | 568 kB
+ film_actor       | 488 kB
+ inventory        | 440 kB
+ payment_p2017_02 | 296 kB
+ payment_p2017_01 | 248 kB
+ customer         | 216 kB
+ address          | 160 kB
+(10 rows)
+
+J. Hasil query V3
+pagila=# SELECT f.title, count(*) AS total_sewa
+FROM rental r
+JOIN inventory i
+  ON i.inventory_id = r.inventory_id
+JOIN film f
+  ON f.film_id = i.film_id
+GROUP BY f.title
+ORDER BY total_sewa DESC
+LIMIT 5;
+        title        | total_sewa 
+---------------------+------------
+ BUCKET BROTHERHOOD  |         34
+ ROCKETEER MOTHER    |         33
+ RIDGEMONT SUBMARINE |         32
+ SCALAWAG DUCK       |         32
+ FORWARD TEMPLE      |         32
+(5 rows)
+
+K. Hasil V4 — EXPLAIN ANALYZE
+QUERY PLAN               
+ HashAggregate  (cost=713.69..723.69 rows=1000 width=23) (actual time=235.564..236.176 rows=958 loops=1)
+   Group Key: f.title
+   Batches: 1  Memory Usage: 193kB
+   ->  Hash Join  (cost=238.57..633.47 rows=16044 width=15) (actual time=24.623..180.266 rows=16044 loops=1)
+         Hash Cond: (i.film_id = f.film_id)
+         ->  Hash Join  (cost=128.07..480.67 rows=16044 width=2) (actual time=6.421..135.332 rows=16044 loops=1)
+               Hash Cond: (r.inventory_id = i.inventory_id)
+               ->  Seq Scan on rental r  (cost=0.00..310.44 rows=16044 width=4) (actual time=0.078..28.973 rows=16044 loops=1)
+               ->  Hash  (cost=70.81..70.81 rows=4581 width=6) (actual time=6.231..6.235 rows=4581 loops=1)
+                     Buckets: 8192  Batches: 1  Memory Usage: 234kB
+                     ->  Seq Scan on inventory i  (cost=0.00..70.81 rows=4581 width=6) (actual time=0.022..2.791 rows=4581 loops=1)
+         ->  Hash  (cost=98.00..98.00 rows=1000 width=19) (actual time=18.181..18.182 rows=1000 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 60kB
+               ->  Seq Scan on film f  (cost=0.00..98.00 rows=1000 width=19) (actual time=0.054..17.111 rows=1000 loops=1)
+ Planning Time: 195.253 ms
+ Execution Time: 255.284 ms
+(16 rows)
+
+(END)
+
+L. Kalimat: “Yang paling membingungkan dari keluaran ini adalah ...”
+Yang paling membingungkan dari keluaran ini adalah adanya banyak baris dengan tulisan 'Seq Scan', 'Hash Join', dan angka-angka seperti 'cost=...' serta 'rows=...'. Saya belum paham apa arti dari angka cost tersebut dan mengapa ada beberapa langkah yang harus dilalui database sebelum menghasilkan jawaban akhir.
