@@ -58,3 +58,12 @@ F. Jawaban empat pertanyaan pada Langkah 2
     Jawaban: Cara yang lebih aman adalah dengan menggunakan file .env untuk menyimpan password dan kredensial sensitif, lalu memanggilnya di docker-compose.yml menggunakan variabel environment.
     Kemudian, file .env wajib dimasukkan ke dalam .gitignore agar tidak ikut ter-upload ke repositori Git.
     Hal ini penting karena repositori Git (terutama yang public atau yang dibagikan ke tim) bisa diakses oleh banyak orang. Jika password tersimpan langsung di docker-compose.yml yang ter-commit ke Git, maka siapa saja yang memiliki akses ke repositori tersebut bisa melihat password database. Ini sangat berisiko untuk keamanan data. Dengan menggunakan file .env yang di-ignore oleh Git, password tetap aman di komputer lokal dan tidak tersebar ke repositori.
+
+G. Perbandingan penggunaan psql dan DBeaver
+    1. Satu aktivitas yang menurut Anda lebih cepat dilakukan menggunakan psql.
+    
+    Jawaban: Melihat daftar database yang ada dengan perintah \l lebih cepat di psql karena cukup ketik satu perintah dan langsung muncul hasilnya, tanpa perlu navigasi menu.
+
+    2. Satu aktivitas yang menurut Anda lebih cepat dilakukan menggunakan DBeaver.
+    
+    Jawaban: Melihat struktur tabel dan relasi antar tabel lebih cepat di DBeaver karena bisa langsung lihat ER Diagram secara visual tanpa perlu ketik query manual.
