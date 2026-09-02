@@ -36,5 +36,12 @@
 ### 2.  Pilih satu kebutuhan yang memiliki aturan paling rumit. Menurut kelompok kalian, apakah aturan tersebut lebih tepat ditegakkan menggunakan constraint, trigger, atau kode aplikasi? Berikan satu alasan.
     Kelompok kami memilih kebutuhan KD-04 (Jadwal Pendampingan) dengan aturan pencegahan bentrok jadwal. Aturan ini lebih tepat ditegakkan menggunakan kode aplikasi karena logika validasi waktu yang dinamis dan kompleks lebih mudah diimplementasikan, diuji, dan dimodifikasi pada lapisan bisnis aplikasi dibandingkan menggunakan constraint atau trigger basis data yang cenderung kaku dan sulit di-debug.
 
+### 3.  Mengapa Peminjaman dan Unit Alat pada contoh tidak dihubungkan langsung, tetapi melalui Baris Pinjam? Apa yang hilang jika hubungan dibuat langsung?
+    Entitas Peminjaman dan Unit Alat tidak dihubungkan secara langsung karena terdapat relasi banyak-ke-banyak (many-to-many) di antara keduanya. Jika dihubungkan langsung tanpa entitas perantara, sistem akan kehilangan kemampuan untuk merekam atribut spesifik dari setiap transaksi per item, seperti jumlah unit yang dipinjam dalam satu transaksi atau waktu pengembalian spesifik per unit alat.
+
+### 4.  Apa perbedaan antara entitas Alat dan Unit Alat? Sebutkan satu pertanyaan bisnis yang hanya dapat dijawab jika keduanya dipisahkan.
+    Entitas Alat merepresentasikan data master atau katalog jenis barang (misalnya "Laptop Model X"), sedangkan entitas Unit Alat merepresentasikan barang fisik individu yang memiliki identitas unik seperti nomor seri. Pertanyaan bisnis yang hanya dapat dijawab dengan pemisahan ini adalah: "Berapa banyak unit fisik dari jenis alat tertentu yang saat ini sedang dipinjam dan berapa yang masih tersedia di gudang?"
+
+    
 ### 7.  Mengapa seed data tidak diletakkan langsung di dalam migrations/? Sebutkan satu perbedaan sifat antara migration dan seed data.
     Seed data tidak diletakkan di dalam folder migrations karena keduanya memiliki tujuan dan sifat eksekusi yang berbeda. Migration bersifat immutable (tidak boleh diubah setelah dijalankan) dan hanya dieksekusi sekali untuk mengelola evolusi struktur skema (DDL), sedangkan seed data bersifat idempotent (dapat dijalankan berulang kali dengan hasil yang sama) untuk mengisi atau mereset data uji (DML) tanpa memengaruhi riwayat versi skema.
