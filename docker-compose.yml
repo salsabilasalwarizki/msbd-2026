@@ -11,10 +11,25 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./dump:/dump
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U msbd"]
       interval: 10s
       retries: 5
+      
+  flyway:
+    image: flyway/flyway:11
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - FLYWAY_URL=jdbc:postgresql://postgres:5432/proyek_dev
+      - FLYWAY_USER=msbd
+      - FLYWAY_PASSWORD=msbd2026
+      - FLYWAY_CONNECT_RETRIES=10
+    volumes:
+      - ./latihan/p02/migrations:/flyway/sql
+    command: migrate
 
   mongo:
     image: mongo:8
