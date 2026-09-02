@@ -48,4 +48,7 @@ Seed data digunakan untuk mengisi data awal (DML) ke dalam tabel yang sudah terb
 3. Untuk memastikan data berhasil dimasukkan dan bersifat idempoten (tidak duplikat jika dijalankan berulang), Anda dapat memverifikasi jumlah barisnya:
    powershell
    docker compose exec postgres psql -U msbd -d proyek_dev -c "SELECT count(*) FROM jenis_bantuan;"
+
+## Catatan:
+Yth. Bapak Muhammad Isa Dadi Hasibuan S.Kom., M.Kom, Kami selaku Kelompok 9 ingin menyampaikan permohonan maaf yang sebesar-besarnya atas keterlambatan penyelesaian salah satu bagian tugas pada Latihan Pertemuan 2. Terdapat kendala koordinasi dan kelalaian manajemen waktu dari salah satu anggota kami, sehingga bagiannya tidak sempat dikumpulkan tepat pada pukul 23.59. Sebagai Project Manager, saya mengambil inisiatif untuk melengkapi, memverifikasi, dan mengunggah bagian tugas tersebut agar submissions kelompok kami tetap utuh dan dapat dinilai secara menyeluruh. Kami menyadari sepenuhnya bahwa hal ini merupakan bentuk kelalaian kami dalam mengelola tenggat waktu. Kami berjanji akan lebih disiplin dan memperbaiki koordinasi internal kelompok untuk tugas-tugas selanjutnya. Terima kasih banyak atas pengertian, waktu, dan kesempatan yang Bapak berikan kepada kelompok kami.
    
