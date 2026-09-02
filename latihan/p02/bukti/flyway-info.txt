@@ -1,4 +1,4 @@
-WARNING: Storing migrations in 'sql' is not recommended and default scanning of this location may be deprecated in a future release
+d:\Documents\msbd-2026 - Copy (2)\latihan\p02\bukti\flyway-info-Langkah4-1.pngWARNING: Storing migrations in 'sql' is not recommended and default scanning of this location may be deprecated in a future release
 Flyway OSS Edition 11.20.3 by Redgate
 
 See release notes here: https://rd.gt/416ObMi
