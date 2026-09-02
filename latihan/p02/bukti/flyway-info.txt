@@ -1,0 +1,13 @@
+WARNING: Storing migrations in 'sql' is not recommended and default scanning of this location may be deprecated in a future release
+Flyway OSS Edition 11.20.3 by Redgate
+
+See release notes here: https://rd.gt/416ObMi
+Database: jdbc:postgresql://postgres:5432/proyek_dev (PostgreSQL 17.11)
+Schema version: 1
+
++-----------+---------+-------------+------+---------------------+---------+----------+
+| Category  | Version | Description | Type | Installed On        | State   | Undoable |
++-----------+---------+-------------+------+---------------------+---------+----------+
+| Versioned | 1       | skema awal  | SQL  | 2026-09-02 13:10:06 | Success | No       |
++-----------+---------+-------------+------+---------------------+---------+----------+
+
