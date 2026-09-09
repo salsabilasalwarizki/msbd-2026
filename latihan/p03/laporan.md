@@ -132,4 +132,5 @@ PS D:\Documents\msbd-2026> Get-Content latihan/p03/r1_laporan_bulanan.sql | dock
 
 Merge request untuk latihan ini bisa diakses di:
 
-https://github.com/salsabilasalwarizki/msbd-2026/compare/latihan/p03-sql1?expand=1
+https://github.com/salsabilasalwarizki/msbd-2026/pull/1
+latihan/p03-sql1
