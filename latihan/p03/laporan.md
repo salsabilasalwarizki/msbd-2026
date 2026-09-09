@@ -25,6 +25,25 @@ Secara konsep, subquery berkorelasi itu dievaluasi sekali per baris luar. Tapi k
 
 Optimizer-nya bisa ngenalin pola dan milih strategi eksekusi yang lebih efisien daripada evaluasi naif "sekali per baris".
 
+## Refleksi B - CTE dan Recursive CTE
+
+### B1: Pada Q7, mengapa recursive term hanya melihat baris yang baru dihasilkan pada iterasi sebelumnya, dan apa akibatnya jika ia melihat seluruh hasil?
+
+PostgreSQL itu pakai algoritma "working table" buat recursive CTE. Jadi recursive term-nya cuma memproses baris yang dihasilin di iterasi sebelumnya, bukan seluruh hasil akumulatif. Ini buat mencegah duplikasi perhitungan.
+
+Kalau misalnya dia lihat seluruh hasil, bakal terjadi duplikasi dan kemungkinan infinite loop kalau graf-nya bersiklus.
+
+### B2: Kapan mengganti UNION ALL dengan UNION dapat menghentikan siklus, dan mengapa itu tetap bukan solusi yang baik?
+
+UNION (tanpa ALL) itu ngilangin duplikat, jadi kalau suatu baris udah pernah dihasilin, dia gak bakal diproses lagi. Ini emang bisa ngehentiin siklus sederhana. Tapi ini bukan solusi yang bagus karena beberapa alasan:
+
+1. Performanya buruk karena harus ngecek duplikat di setiap iterasi
+2. Gak nangani kasus di mana jalur berbeda tapi node-nya sama
+3. CYCLE atau pelacakan jalur itu lebih eksplisit dan bisa diandalkan
+
+Maka dari itu, lebih baik pakai CYCLE clause atau pelacakan array buat nangani siklus di recursive CTE.
+
+
 ## Refleksi C - Window Function
 
 ### C1: Pada Q14, berapa tanggal yang berbeda, dan sifat data apa pada tabel payment yang menyebabkan perbedaan?
@@ -50,6 +69,7 @@ Kesalahan frame ini susah ditemukan lewat pengujian biasa karena hasilnya tetap 
 Kalau ORDER BY ditambahin ke OVER() tanpa frame eksplisit, frame default-nya jadi `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. Ini berarti total belanja bakal jadi **running total**, bukan total keseluruhan partisi.
 
 Maka dari itu, kalau mau total keseluruhan, kita harus pakai `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` atau hilangkan ORDER BY sama sekali.
+
 
 ## Refleksi D - Agregasi dan Operasi Himpunan
 
