@@ -25,13 +25,31 @@ Secara konsep, subquery berkorelasi itu dievaluasi sekali per baris luar. Tapi k
 
 Optimizer-nya bisa ngenalin pola dan milih strategi eksekusi yang lebih efisien daripada evaluasi naif "sekali per baris".
 
+## Refleksi C - Window Function
 
+### C1: Pada Q14, berapa tanggal yang berbeda, dan sifat data apa pada tabel payment yang menyebabkan perbedaan?
 
+Nah ini yang menarik. Di tabel `payment` Pagila, ada beberapa tanggal yang punya transaksi ganda (disebut peer). Frame RANGE default itu nyertain semua peer dengan nilai ORDER BY yang sama, makanya kumulatifnya jadi "melompat".
 
+Jumlah tanggal yang berbeda antara frame ROWS dan RANGE bisa dilihat dari hasil query Q14:
 
+```sql
+Get-Content latihan/p03/q14_rows_vs_range.sql | docker compose exec -T postgres psql -U msbd -d pagila
+```
 
+Perbedaan terjadi karena ada tanggal dengan banyak transaksi yang nilainya sama, dan RANGE ngelakuin grouping berdasarkan nilai, bukan berdasarkan baris.
 
+### C2: Jika Q13 menjadi laporan resmi keuangan, versi mana yang benar dan mengapa kesalahan frame sulit ditemukan melalui pengujian biasa?
 
+Kalau Q13 ini jadi laporan resmi keuangan, yang benar itu pakai ROWS. Alasannya karena setiap transaksi harus dihitung sekali secara berurutan. RANGE bisa nggabungin transaksi di hari yang sama, maka kumulatifnya gak bakal mencerminkan aliran kas yang sebenarnya.
+
+Kesalahan frame ini susah ditemukan lewat pengujian biasa karena hasilnya tetap terlihat "masuk akal" (angkanya naik terus), cuma aja gak presisi per transaksi. Makanya penting buat ngerti perbedaan ROWS vs RANGE.
+
+### C3: Pada Q15, apa yang terjadi pada total belanja jika ORDER BY ditambahkan ke dalam OVER tanpa menuliskan frame?
+
+Kalau ORDER BY ditambahin ke OVER() tanpa frame eksplisit, frame default-nya jadi `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`. Ini berarti total belanja bakal jadi **running total**, bukan total keseluruhan partisi.
+
+Maka dari itu, kalau mau total keseluruhan, kita harus pakai `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` atau hilangkan ORDER BY sama sekali.
 
 ## Refleksi D - Agregasi dan Operasi Himpunan
 
