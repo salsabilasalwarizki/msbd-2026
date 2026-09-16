@@ -675,6 +675,21 @@ Ini menunjukkan pentingnya menjalankan migration **sebelum** melakukan perubahan
 Berdasarkan Q2, ketika view punya WHERE clause tapi tanpa CHECK OPTION, INSERT lewat view bisa sukses tapi datanya "menghilang" dari view. Ini bikin tim bingung karena data seolah-olah hilang padahal sebenarnya ada di tabel dasar. Maka dari itu, view yang dipakai untuk write operation harus pakai WITH CHECK OPTION.
 
 ---
+
+### Refleksi B: Materialized View
+
+**B1: Trade-off Materialized View**
+
+Materialized view itu cepat karena hasilnya udah disimpan, tapi datanya bisa basi (stale) karena tidak otomatis update saat tabel dasar berubah.
+
+**B2: Kompromi yang Diusulkan**
+
+- **Batas kebasian**: Data boleh basi maksimal 1 jam (tergantung kebutuhan bisnis).
+- **Jadwal refresh**: Pakai `REFRESH CONCURRENTLY` setiap 30 menit via cron job atau pg_cron.
+- **Tindakan saat refresh gagal**: Kirim notifikasi ke tim ops, fallback ke query langsung ke tabel dasar, dan retry otomatis setelah 5 menit.
+
+---
+
 ### Refleksi C: Trigger Audit
 
 **C1: Kapan Trigger Per Baris Lebih Tepat?**
