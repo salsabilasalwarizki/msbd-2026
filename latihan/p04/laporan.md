@@ -797,6 +797,6 @@ migrations/
 
 ## Tautan Merge Request
 
-[URL merge request]
+(https://github.com/salsabilasalwarizki/msbd-2026/pull/2)
 
 ---
