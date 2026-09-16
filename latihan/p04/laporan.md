@@ -675,7 +675,21 @@ Ini menunjukkan pentingnya menjalankan migration **sebelum** melakukan perubahan
 Berdasarkan Q2, ketika view punya WHERE clause tapi tanpa CHECK OPTION, INSERT lewat view bisa sukses tapi datanya "menghilang" dari view. Ini bikin tim bingung karena data seolah-olah hilang padahal sebenarnya ada di tabel dasar. Maka dari itu, view yang dipakai untuk write operation harus pakai WITH CHECK OPTION.
 
 ---
+### Refleksi C: Trigger Audit
 
+**C1: Kapan Trigger Per Baris Lebih Tepat?**
+
+Trigger per baris tetap lebih tepat ketika kita butuh akses ke nilai OLD dan NEW per baris untuk logika kondisional yang kompleks. Misalnya, kalau audit cuma perlu dicatat untuk film dengan rating tertentu, trigger per baris bisa pakai `WHEN (OLD.rating = 'PG')`.
+
+**C2: Kemampuan yang Tidak Dimiliki Trigger Pernyataan**
+
+Trigger pernyataan tidak bisa mengakses nilai OLD/NEW per baris secara individual. Dia cuma bisa lihat transition table (OLD TABLE/NEW TABLE) sebagai satu kesatuan.
+
+**C3: Mengapa Kirim Email dari Trigger Itu Buruk?**
+
+Kalau transaksi di-rollback setelah trigger kirim email, email udah terlanjur terkirim tapi datanya gak jadi berubah. Ini bikin inkonsistensi antara notifikasi dan state database. Makanya kirim email harusnya dilakukan di luar transaksi, misalnya via queue atau job scheduler.
+
+---
 ### Refleksi D: Constraint dan Konkurensi
 
 **D1: Mengapa Trigger Bisa Gagal Saat Konkuren?**
