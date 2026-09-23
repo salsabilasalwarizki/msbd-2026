@@ -66,6 +66,43 @@ NOTICE: Data referensi tidak valid: customer, inventory, atau staff tidak ditemu
  count: 3 (tidak bertambah)
 ```
 **Alasan:** Menangkap error tingkat rendah database dan mengubahnya menjadi NOTICE yang lebih ramah. Informasi detail SQLSTATE hilang, tetapi ini layak dilakukan untuk endpoint API agar tidak membocorkan struktur database.
+
+### Q6: Domain positive_amount
+**Perintah:** Mencoba memasukkan pembayaran bernilai nol dan negatif.
+**Keluaran:** 
+```sql
+ERROR: value for domain lab5.positive_amount violates check constraint "positive_amount_check"
+```
+**Alasan:** Domain secara ketat menolak kedua nilai tersebut di level database, menjamin integritas data regardless of aplikasi yang mengaksesnya.
+
+### Q7: Enum status
+**Perintah:** Mencoba set status menjadi EXPIRED, lalu menambahkan nilai tersebut.
+**Keluaran:** 
+```sql
+ERROR: invalid input value for enum lab5.rental_status: "EXPIRED"
+ALTER TYPE
+UPDATE 1
+```
+**Alasan:** Enum bersifat ketat. Setelah ALTER TYPE ... ADD VALUE, operasi update berhasil.
+
+### Q8: Tags array
+**Perintah:** Mengisi tags dengan tiga nilai dan mencari baris dengan operator array.
+**Keluaran:** 
+```sql
+UPDATE 1
+ rental_id: 1, tags: {promo,akhir-pekan,anggota}
+```
+**Alasan:** Operator `= ANY(tags)` adalah cara paling efisien dan standar untuk mencari keberadaan elemen dalam array PostgreSQL.
+
+### Q9: Metadata JSONB
+**Perintah:** Menyimpan JSONB dan mengambil field channel.
+**Keluaran:** 
+```sql
+UPDATE 1
+ rental_id: 1, kanal: web
+```
+**Alasan:** Operator `->>` mengekstrak nilai JSON sebagai teks, cocok untuk data semi-terstruktur yang tidak memerlukan skema rigid.
+
 ### Q10–Q15: psycopg 3 (lab5_driver.py)
 **Hasil Mentah Terminal:**
 ```text
@@ -164,6 +201,13 @@ PS C:\Users\LENOVO\Documents\msbd-2026> curl.exe -X POST http://localhost:8000/r
 **Jawaban:** 
 Pada Q3, transaksi dimulai oleh pemanggilan CALL procedure, dan diakhiri (rollback) secara otomatis oleh PostgreSQL saat mendeteksi pelanggaran domain. Buktinya adalah jumlah baris rental_tx tidak bertambah setelah CALL gagal. 
 Pada Q4 dan Q13, transaksi dimulai oleh aplikasi (melalui `with psycopg.connect(...)` di Python). Procedure tidak dapat mengontrol commit/rollback sendiri jika dipanggil di dalam blok transaksi eksternal. Buktinya adalah error `invalid transaction termination` saat procedure mencoba melakukan COMMIT, dan rollback otomatis saat aplikasi melempar exception sebelum blok koneksi selesai.
+
+### Refleksi B
+**Pertanyaan:** Pilih tags atau metadata. Apakah sebaiknya tetap di sana atau dipindahkan menjadi tabel? Berikan satu pertanyaan bisnis yang dapat mengubah keputusan tersebut.
+**Jawaban:** 
+Kolom `tags` sebaiknya dipindahkan menjadi tabel terpisah (misalnya `lab5.rental_tags`) jika frekuensi query untuk menganalisis tag sangat tinggi, atau jika tag memerlukan validasi dari daftar master (referential integrity). 
+Pertanyaan bisnis yang mengubah keputusan: "Seberapa sering tim marketing perlu melakukan agregasi atau JOIN berdasarkan tag tertentu untuk kampanye, dan apakah tag harus dibatasi hanya pada nilai yang telah disetujui?" Jika jawabannya sering dan ya, maka normalisasi ke tabel terpisah lebih baik. Sebaliknya, `metadata` sebaiknya tetap di JSONB karena strukturnya dinamis, tidak pasti, dan hanya digunakan untuk keperluan audit atau debugging.
+
 ### Refleksi C
 **Pertanyaan:** Bandingkan rollback Q3 yang dipicu basis data dan Q13 yang dipicu Python. Apa persamaannya, dan apa satu hal yang hanya dapat dilakukan sisi aplikasi?
 **Jawaban:** 
