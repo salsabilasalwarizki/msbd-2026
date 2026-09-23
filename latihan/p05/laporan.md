@@ -66,6 +66,17 @@ NOTICE: Data referensi tidak valid: customer, inventory, atau staff tidak ditemu
  count: 3 (tidak bertambah)
 ```
 **Alasan:** Menangkap error tingkat rendah database dan mengubahnya menjadi NOTICE yang lebih ramah. Informasi detail SQLSTATE hilang, tetapi ini layak dilakukan untuk endpoint API agar tidak membocorkan struktur database.
+### Q10–Q15: psycopg 3 (lab5_driver.py)
+**Hasil Mentah Terminal:**
+```text
+=== Memulai Lab 5 Driver (psycopg 3) ===
+
+=== Q10: SELECT berparameter ===
+Customer: (1, 'MARY', 'SMITH')
+
+=== Q11: Uji Injeksi ===
+[BAHAYA] SQL injeksi (tidak dijalankan): SELECT customer_id FROM public.customer WHERE last_name = 'SMITH' OR '1'='1'
+[AMAN] Hasil parameter binding: [] (harus kosong)
 
 ### Q16–Q20: ORM dan N+1 (lab5_orm.py)
 **Hasil Mentah Terminal:**
@@ -153,6 +164,12 @@ PS C:\Users\LENOVO\Documents\msbd-2026> curl.exe -X POST http://localhost:8000/r
 **Jawaban:** 
 Pada Q3, transaksi dimulai oleh pemanggilan CALL procedure, dan diakhiri (rollback) secara otomatis oleh PostgreSQL saat mendeteksi pelanggaran domain. Buktinya adalah jumlah baris rental_tx tidak bertambah setelah CALL gagal. 
 Pada Q4 dan Q13, transaksi dimulai oleh aplikasi (melalui `with psycopg.connect(...)` di Python). Procedure tidak dapat mengontrol commit/rollback sendiri jika dipanggil di dalam blok transaksi eksternal. Buktinya adalah error `invalid transaction termination` saat procedure mencoba melakukan COMMIT, dan rollback otomatis saat aplikasi melempar exception sebelum blok koneksi selesai.
+### Refleksi C
+**Pertanyaan:** Bandingkan rollback Q3 yang dipicu basis data dan Q13 yang dipicu Python. Apa persamaannya, dan apa satu hal yang hanya dapat dilakukan sisi aplikasi?
+**Jawaban:** 
+Persamaannya adalah keduanya mengembalikan state database ke kondisi sebelum transaksi dimulai, sehingga tidak ada data yang persisten secara parsial. 
+Perbedaannya, Q3 dipicu oleh aturan integritas database (domain violation) di mana aplikasi tidak memiliki kontrol. Q13 dipicu oleh logika bisnis aplikasi (RuntimeError). 
+Satu hal yang hanya dapat dilakukan sisi aplikasi adalah melakukan "kompensasi bisnis" sebelum atau sesudah rollback, seperti mengirim notifikasi kegagalan ke pengguna, mencatat log error ke sistem monitoring eksternal, atau mencoba fallback ke metode pembayaran alternatif. PostgreSQL tidak dapat melakukan hal ini karena tidak mengetahui konteks bisnis di luar database.
 
 ### Refleksi D
 **Pertanyaan:** Untuk Q20, versi mana yang dipilih jika kode dibaca ulang tim enam bulan lagi? Dukung jawaban dengan angka. Sebutkan pula keadaan ketika joinedload lebih tepat dari selectinload.
