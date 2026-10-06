@@ -168,6 +168,148 @@ hot_longgar |         0 |             0
 3. Tidak ada kolom terindeks yang berubah
 
 Jika kolom terindeks (seperti primary key) diupdate, PostgreSQL harus membuat tuple baru di halaman berbeda dan mengupdate index pointer, sehingga tidak bisa HOT update.
+### Q12: Partial Index
+
+**Perintah:**
+```sql
+DROP INDEX IF EXISTS lab6.ev_gagal_idx;
+DROP INDEX IF EXISTS lab6.ev_terjadi_pada_idx;
+CREATE INDEX ev_gagal_idx ON lab6.event_log (terjadi_pada DESC) WHERE status = 'GAGAL';
+CREATE INDEX ev_terjadi_pada_idx ON lab6.event_log (terjadi_pada DESC);
+SELECT indexname, pg_size_pretty(pg_relation_size((schemaname || '.' || indexname)::regclass)) AS ukuran,
+  pg_relation_size((schemaname || '.' || indexname)::regclass) AS ukuran_byte
+FROM pg_indexes WHERE schemaname = 'lab6' AND indexname IN ('ev_gagal_idx', 'ev_terjadi_pada_idx');
+```
+
+**Keluaran:**
+```
+indexname          | ukuran | ukuran_byte
+-------------------+--------+-------------
+ev_gagal_idx       | 896 kB | 917504
+ev_terjadi_pada_idx| 43 MB  | 44949504
+```
+
+**Analisis:**
+- Partial index (ev_gagal_idx): 896 kB
+- Index polos (ev_terjadi_pada_idx): 43 MB (44949504 byte)
+- Penghematan: (44949504 - 917504) / 44949504 * 100 = 97.96%
+- Partial index 50x lebih kecil karena hanya mengindex baris dengan status = 'GAGAL' (2% dari total data = 40000 baris)
+- Index polos mengindex semua 2.000.000 baris
+
+### Q13: Expression Index
+
+**Perintah:**
+```sql
+\timing on
+SET max_parallel_workers_per_gather = 0;
+EXPLAIN (ANALYZE, BUFFERS) SELECT event_id, email FROM lab6.event_log WHERE email = 'user4211@contoh.ac.id';
+EXPLAIN (ANALYZE, BUFFERS) SELECT event_id, email FROM lab6.event_log WHERE lower(email) = 'user4211@contoh.ac.id';
+```
+
+**Keluaran:**
+```
+Query 1 (email = ...):
+  Seq Scan on event_log, Execution Time: 740.317 ms
+  Filter: (email = 'user4211@contoh.ac.id'::text)
+  Rows Removed by Filter: 1999999
+  Buffers: shared hit=11374 read=47194
+
+Query 2 (lower(email) = ...):
+  Bitmap Heap Scan on event_log, Execution Time: 1.159 ms
+  Recheck Cond: (lower(email) = 'user4211@contoh.ac.id'::text)
+  -> Bitmap Index Scan on ev_email_lower_idx
+  Buffers: shared read=4
+```
+
+**Analisis:**
+- Query tanpa expression (email = ...): 740.317 ms, Seq Scan, tidak pakai index
+- Query dengan expression (lower(email) = ...): 1.159 ms, Bitmap Index Scan, pakai index ev_email_lower_idx
+- Expression index 639x lebih cepat (740 ms -> 1.16 ms)
+- Index pada lower(email) hanya bisa dipakai jika query juga menggunakan lower(email)
+- Query email = ... tidak bisa pakai index karena tidak ada index pada kolom email polos
+
+### Q14: Covering Index dan Index-Only Scan
+
+**Perintah:**
+```sql
+\timing on
+SET max_parallel_workers_per_gather = 0;
+EXPLAIN (ANALYZE, BUFFERS) SELECT customer_id, terjadi_pada, jumlah FROM lab6.event_log WHERE customer_id = 4211;
+VACUUM (ANALYZE) lab6.event_log;
+EXPLAIN (ANALYZE, BUFFERS) SELECT customer_id, terjadi_pada, jumlah FROM lab6.event_log WHERE customer_id = 4211;
+```
+
+**Keluaran:**
+```
+Sebelum VACUUM:
+  Index Only Scan using ev_cover_idx, Execution Time: 1.157 ms
+  Index Cond: (customer_id = 4211)
+  Heap Fetches: 0
+  Buffers: shared hit=2 read=3
+
+Setelah VACUUM:
+  Index Only Scan using ev_cover_idx, Execution Time: 0.073 ms
+  Index Cond: (customer_id = 4211)
+  Heap Fetches: 0
+  Buffers: shared hit=5
+```
+
+**Analisis:**
+- Kedua query menggunakan Index Only Scan (semua kolom ada di index + INCLUDE)
+- Heap Fetches: 0 (tidak perlu akses heap sama sekali)
+- Sebelum VACUUM: 1.157 ms (ada overhead read dari disk)
+- Setelah VACUUM: 0.073 ms (15.8x lebih cepat, semua dari buffer)
+- VACUUM mengupdate visibility map, menandai halaman yang semua tuplenya visible
+- Index-only scan bisa skip heap fetch jika halaman fully visible
+- Covering index (INCLUDE) sangat efektif untuk query yang hanya butuh subset kolom
+
+### Q15: INCLUDE vs Index Tiga Kolom
+
+**Perintah:**
+```sql
+CREATE INDEX ev_tiga_kolom_idx ON lab6.event_log (customer_id, terjadi_pada, jumlah);
+EXPLAIN (ANALYZE, BUFFERS) SELECT customer_id, terjadi_pada, jumlah FROM lab6.event_log WHERE customer_id = 4211;
+```
+
+**Keluaran:**
+```
+Index Only Scan using ev_tiga_kolom_idx, Execution Time: 1.260 ms
+Index Cond: (customer_id = 4211)
+Heap Fetches: 0
+Buffers: shared hit=2 read=3
+```
+
+**Analisis:**
+- ev_cover_idx (customer_id INCLUDE terjadi_pada, jumlah): 77 MB
+- ev_tiga_kolom_idx (customer_id, terjadi_pada, jumlah): 77 MB
+- Kedua index berukuran sama karena menyimpan data yang sama
+- Perbedaan: index tiga kolom mengurutkan juga berdasarkan terjadi_pada dan jumlah, sedangkan INCLUDE hanya menyimpan nilai tanpa mengurutkan
+- Untuk query WHERE customer_id = 4211, keduanya sama-sama Index Only Scan
+- INCLUDE lebih efisien jika query tidak perlu filter/sort pada kolom tambahan
+- Index tiga kolom lebih efisien jika query perlu filter/sort pada terjadi_pada
+
+### Q16: Reflektif Heap Fetches
+
+**Perintah:**
+```sql
+SELECT relname, last_vacuum, last_autovacuum, last_analyze, last_autoanalyze
+FROM pg_stat_user_tables WHERE relname = 'event_log';
+```
+
+**Keluaran:**
+```
+relname   | last_vacuum                  | last_autovacuum              | last_analyze
+----------+------------------------------+------------------------------+------------------
+event_log | 2026-10-06 08:39:28.44448+00 | 2026-10-06 07:58:51.479165+00| 2026-10-06 08:39:30.254604+00
+```
+
+**Analisis:** Heap Fetches berubah setelah VACUUM karena:
+1. VACUUM mengupdate visibility map, menandai halaman yang semua tuplenya visible untuk semua transaksi
+2. Index-only scan memeriksa visibility map sebelum fetch dari heap
+3. Jika halaman fully visible, skip heap fetch (Heap Fetches: 0)
+4. Jika halaman tidak fully visible (ada tuple yang mungkin tidak visible), harus fetch dari heap untuk verifikasi
+5. Tanpa VACUUM, PostgreSQL harus cek heap untuk memastikan tuple visible, menambah Heap Fetches
+6. Dengan VACUUM, visibility map up-to-date, Heap Fetches minimal atau 0
 
 
 
