@@ -168,6 +168,140 @@ hot_longgar |         0 |             0
 3. Tidak ada kolom terindeks yang berubah
 
 Jika kolom terindeks (seperti primary key) diupdate, PostgreSQL harus membuat tuple baru di halaman berbeda dan mengupdate index pointer, sehingga tidak bisa HOT update.
+
+### Q7: Baseline (Tanpa Index)
+
+**Perintah:**
+```sql
+\timing on
+SET max_parallel_workers_per_gather = 0;
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT event_id, jumlah FROM lab6.event_log
+WHERE customer_id = 4211 AND terjadi_pada >= timestamptz '2024-06-01 00:00+07'
+ORDER BY terjadi_pada DESC LIMIT 20;
+-- Dijalankan 3 kali
+```
+
+**Keluaran (3 kali pengulangan):**
+```
+Run 1: Execution Time: 564.621 ms, Buffers: shared hit=10310 read=48261
+Run 2: Execution Time: 396.932 ms, Buffers: shared hit=10339 read=48229
+Run 3: Execution Time: 385.440 ms, Buffers: shared hit=10371 read=48197
+```
+
+**Analisis:**
+- Waktu tercepat: 385.440 ms
+- Waktu median: 396.932 ms
+- Rencana: Seq Scan + Sort (quicksort, 26kB memory)
+- Filter membuang 1.999.985 dari 2.000.000 baris (hanya 15 yang cocok)
+- Buffers: ~10.300 hit + ~48.200 read = ~58.500 total (seluruh tabel di-scan)
+- Run 1 lebih lambat karena data belum di-cache (cold cache), run 2-3 lebih cepat karena data sudah di buffer pool
+
+### Q8: Urutan Salah (terjadi_pada, customer_id)
+
+**Perintah:**
+```sql
+CREATE INDEX ev_salah_idx ON lab6.event_log (terjadi_pada, customer_id);
+EXPLAIN (ANALYZE, BUFFERS) [query yang sama] -- 3 kali
+```
+
+**Keluaran (3 kali pengulangan):**
+```
+Run 1: Execution Time: 148.150 ms, Buffers: shared hit=18 read=3807
+Run 2: Execution Time: 57.011 ms, Buffers: shared hit=3825
+Run 3: Execution Time: 49.324 ms, Buffers: shared hit=3825
+```
+
+**Analisis:**
+- Waktu tercepat: 49.324 ms
+- Waktu median: 57.011 ms
+- Index DIPAKAI (Index Scan Backward using ev_salah_idx)
+- TIDAK ada Sort node (index sudah terurut terjadi_pada DESC)
+- Index Cond: ((terjadi_pada >= ...) AND (customer_id = 4211))
+- Meskipun index dipakai, masih harus scan banyak baris karena customer_id bukan kolom pertama
+- 7.4x lebih cepat dari baseline (385 ms -> 49 ms)
+
+### Q9: Urutan Benar (customer_id, terjadi_pada DESC)
+
+**Perintah:**
+```sql
+DROP INDEX IF EXISTS lab6.ev_salah_idx;
+CREATE INDEX ev_benar_idx ON lab6.event_log (customer_id, terjadi_pada DESC);
+EXPLAIN (ANALYZE, BUFFERS) [query yang sama] -- 3 kali
+```
+
+**Keluaran (3 kali pengulangan):**
+```
+Run 1: Execution Time: 0.412 ms, Buffers: shared hit=15 read=3
+Run 2: Execution Time: 0.136 ms, Buffers: shared hit=18
+Run 3: Execution Time: 0.131 ms, Buffers: shared hit=18
+```
+
+**Analisis:**
+- Waktu tercepat: 0.131 ms
+- Waktu median: 0.136 ms
+- Index DIPAKAI (Index Scan using ev_benar_idx)
+- TIDAK ada Sort node (index sudah terurut customer_id, terjadi_pada DESC)
+- Index Cond: ((customer_id = 4211) AND (terjadi_pada >= ...))
+- 2942x lebih cepat dari baseline (385 ms -> 0.131 ms)
+- 376x lebih cepat dari urutan salah (49 ms -> 0.131 ms)
+
+### Q10: Ukuran Index
+
+**Perintah:**
+```sql
+DROP INDEX IF EXISTS lab6.ev_salah_idx;
+DROP INDEX IF EXISTS lab6.ev_benar_idx;
+CREATE INDEX ev_salah_idx ON lab6.event_log (terjadi_pada, customer_id);
+CREATE INDEX ev_benar_idx ON lab6.event_log (customer_id, terjadi_pada DESC);
+SELECT indexname, pg_size_pretty(pg_relation_size((schemaname || '.' || indexname)::regclass)) AS ukuran,
+  pg_relation_size((schemaname || '.' || indexname)::regclass) AS ukuran_byte
+FROM pg_indexes WHERE schemaname = 'lab6' AND indexname IN ('ev_salah_idx', 'ev_benar_idx');
+```
+
+**Keluaran:**
+```
+indexname    | ukuran | ukuran_byte
+-------------+--------+-------------
+ev_salah_idx | 60 MB  | 63012864
+ev_benar_idx | 60 MB  | 63102976
+```
+
+**Analisis:** Kedua index berukuran hampir sama (60 MB) karena kolomnya identik, hanya urutannya berbeda. Perbedaan 90 KB (0.14%) sangat minimal dan mungkin karena:
+- Kompresi prefix B-Tree yang sedikit berbeda
+- Distribusi data yang membuat struktur internal berbeda
+- Overhead metadata index
+
+Kesimpulan: urutan kolom tidak mempengaruhi ukuran index secara signifikan, tetapi sangat mempengaruhi performa query.
+
+### Q11: Reflektif Urutan B-Tree
+
+**Perintah:**
+```sql
+SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'lab6' AND indexname IN ('ev_salah_idx', 'ev_benar_idx');
+```
+
+**Keluaran:**
+```
+indexname    | indexdef
+-------------+------------------------------------------------------------------------------------------
+ev_salah_idx | CREATE INDEX ev_salah_idx ON lab6.event_log USING btree (terjadi_pada, customer_id)
+ev_benar_idx | CREATE INDEX ev_benar_idx ON lab6.event_log USING btree (customer_id, terjadi_pada DESC)
+```
+
+**Analisis:** Daun B-Tree tersusun sesuai urutan kolom definisi. Untuk ev_benar_idx (customer_id, terjadi_pada DESC):
+- Level pertama diurutkan oleh customer_id
+- Untuk customer_id yang sama, diurutkan oleh terjadi_pada DESC
+- Ketika query mencari customer_id = 4211, optimizer bisa langsung loncat ke bagian index yang relevan
+- Dalam bagian tersebut, data sudah terurut terjadi_pada DESC, sesuai dengan ORDER BY query
+- Optimizer bisa berhenti mengurutkan hasil (no Sort node) dan langsung ambil LIMIT 20 dari awal
+
+Untuk ev_salah_idx (terjadi_pada, customer_id):
+- Level pertama diurutkan oleh terjadi_pada
+- Untuk terjadi_pada yang sama, diurutkan oleh customer_id
+- Query harus scan seluruh rentang terjadi_pada >= '2024-06-01' dan filter customer_id = 4211
+- Masih harus scan banyak baris karena customer_id tersebar di seluruh rentang waktu
+
 ### Q12: Partial Index
 
 **Perintah:**
