@@ -1,0 +1,43 @@
+DROP INDEX
+Timing is on.
+SET
+Time: 0.161 ms
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..72.77 rows=17 width=22) (actual time=0.025..0.062 rows=11 loops=1)
+   Buffers: shared hit=14
+   ->  Index Scan using ev_benar_idx on event_log  (cost=0.43..72.77 rows=17 width=22) (actual time=0.024..0.060 rows=11 loops=1)
+         Index Cond: ((customer_id = 4211) AND (terjadi_pada >= '2024-05-31 17:00:00+00'::timestamp with time zone))
+         Buffers: shared hit=14
+ Planning:
+   Buffers: shared hit=116 dirtied=1
+ Planning Time: 0.550 ms
+ Execution Time: 0.100 ms
+(9 rows)
+
+Time: 1.663 ms
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..72.77 rows=17 width=22) (actual time=0.015..0.033 rows=11 loops=1)
+   Buffers: shared hit=14
+   ->  Index Scan using ev_benar_idx on event_log  (cost=0.43..72.77 rows=17 width=22) (actual time=0.014..0.031 rows=11 loops=1)
+         Index Cond: ((customer_id = 4211) AND (terjadi_pada >= '2024-05-31 17:00:00+00'::timestamp with time zone))
+         Buffers: shared hit=14
+ Planning Time: 0.098 ms
+ Execution Time: 0.046 ms
+(7 rows)
+
+Time: 0.543 ms
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.43..72.77 rows=17 width=22) (actual time=0.012..0.024 rows=11 loops=1)
+   Buffers: shared hit=14
+   ->  Index Scan using ev_benar_idx on event_log  (cost=0.43..72.77 rows=17 width=22) (actual time=0.011..0.021 rows=11 loops=1)
+         Index Cond: ((customer_id = 4211) AND (terjadi_pada >= '2024-05-31 17:00:00+00'::timestamp with time zone))
+         Buffers: shared hit=14
+ Planning Time: 0.058 ms
+ Execution Time: 0.036 ms
+(7 rows)
+
+Time: 0.413 ms
+Timing is off.

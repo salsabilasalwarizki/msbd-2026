@@ -1,0 +1,6 @@
+  indexname   |                                      indexdef                                       
+--------------+-------------------------------------------------------------------------------------
+ ev_salah_idx | CREATE INDEX ev_salah_idx ON lab6.event_log USING btree (terjadi_pada, customer_id)
+ ev_benar_idx | CREATE INDEX ev_benar_idx ON lab6.event_log USING btree (customer_id, terjadi_pada)
+(2 rows)
+

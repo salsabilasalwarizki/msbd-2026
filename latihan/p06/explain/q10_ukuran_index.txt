@@ -1,0 +1,8 @@
+CREATE INDEX
+CREATE INDEX
+  indexname   | ukuran | ukuran_byte 
+--------------+--------+-------------
+ ev_salah_idx | 60 MB  |    63012864
+ ev_benar_idx | 60 MB  |    63102976
+(2 rows)
+
