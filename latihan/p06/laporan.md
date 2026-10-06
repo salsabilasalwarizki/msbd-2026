@@ -1,3 +1,182 @@
+# Laporan Latihan Kelompok Pertemuan 6
+## Mengukur Harga Sebuah Index
+
+## Kondisi Uji
+- PostgreSQL: 17.11 (Debian 17.11-1.pgdg13+2)
+- Spesifikasi mesin: Windows 11, Intel/AMD processor, SSD storage
+- Setelan paralel: max_parallel_workers_per_gather = 0
+- Jumlah pengulangan: 3 kali per query
+- Data: 2.000.000 baris di lab6.event_log
+- Ukuran tabel: 501 MB total, 458 MB heap, rata-rata 239.89 byte per baris
+
+## Anggota dan Kontribusi
+
+| Nama | NIM | Kontribusi | Commit |
+|------|-----|------------|--------|
+| Salsabila Salwa Rizki | 251402123 | Q1-Q6, Refleksi A, setup q00 | Tersedia di riwayat Git |
+| Nadia Stevany Br Situmorang | 251402073 | Q7-Q11, Refleksi B | Tersedia di riwayat Git |
+| Sina Mahdi Sitanggang | 251402008 | Q12-Q16, Refleksi C | Tersedia di riwayat Git |
+| Jesqueen Maria Purba | 251402099 | Q17-Q31, Refleksi D-E, R1 | Tersedia di riwayat Git |
+
+---
+
+## Q1-Q31
+
+### Q1: Ukuran Tabel
+
+**Perintah:**
+```sql
+SELECT pg_size_pretty(pg_total_relation_size('lab6.event_log')) AS ukuran_total;
+SELECT pg_size_pretty(pg_relation_size('lab6.event_log')) AS ukuran_heap;
+SELECT pg_relation_size('lab6.event_log')::numeric / count(*) AS rata_rata_byte_per_baris FROM lab6.event_log;
+```
+
+**Keluaran:**
+```
+ukuran_total: 501 MB (524894208 byte)
+ukuran_heap: 458 MB (479789056 byte)
+rata_rata_byte_per_baris: 239.89 byte
+```
+
+**Analisis:** Rata-rata 239.89 byte per baris lebih besar dari perkiraan teoretis (~196 byte) karena adanya:
+- Header tuple (23 byte)
+- Pointer array di halaman
+- Alignment padding untuk tipe data
+- Overhead TOAST pointer untuk kolom besar (email, tags, payload)
+- Data aktual email (~25 byte) dan payload JSONB (~50 byte) lebih besar dari estimasi
+
+### Q2: Tuple per Halaman
+
+**Perintah:**
+```sql
+CREATE EXTENSION IF NOT EXISTS pageinspect;
+SELECT pg_relation_size('lab6.event_log') / current_setting('block_size')::int AS jumlah_halaman;
+SELECT count(*)::numeric / (pg_relation_size('lab6.event_log') / current_setting('block_size')::int) AS rata_rata_tuple_per_halaman FROM lab6.event_log;
+```
+
+**Keluaran:**
+```
+jumlah_halaman: 58568
+rata_rata_tuple_per_halaman: 34.15
+```
+
+**Analisis:** Rata-rata 34.15 tuple per halaman jauh di bawah batas teoretis 291 tuple (8192 byte / ~28 byte). Selisih ini terjadi karena:
+- Setiap tuple rata-rata 239.89 byte, bukan 28 byte
+- 8192 / 239.89 = ~34 tuple per halaman (sesuai hasil)
+- Header halaman (24 byte) dan pointer array (4 byte per tuple) mengurangi ruang tersedia
+- TOAST pointer untuk kolom besar menambah ukuran tuple
+
+### Q3: TOAST
+
+**Perintah:**
+```sql
+SELECT a.attname AS kolom, t.typname AS tipe, a.attstorage AS storage,
+  CASE a.attstorage
+    WHEN 'p' THEN 'plain (tidak di-TOAST)'
+    WHEN 'e' THEN 'external (selalu di-TOAST)'
+    WHEN 'm' THEN 'main (bisa di-TOAST)'
+    WHEN 'x' THEN 'extended (bisa di-TOAST, kompresi)'
+  END AS keterangan
+FROM pg_attribute a JOIN pg_class c ON a.attrelid = c.oid JOIN pg_type t ON a.atttypid = t.oid
+WHERE c.relname = 'event_log' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'lab6')
+  AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum;
+```
+
+**Keluaran:**
+```
+kolom              | tipe      | storage | keterangan
+-------------------+-----------+---------+------------------------------------
+event_id           | int8      | p       | plain (tidak di-TOAST)
+customer_id        | int4      | p       | plain (tidak di-TOAST)
+terjadi_pada       | timestamptz | p     | plain (tidak di-TOAST)
+status             | text      | x       | extended (bisa di-TOAST, kompresi)
+wilayah            | text      | x       | extended (bisa di-TOAST, kompresi)
+kota               | text      | x       | extended (bisa di-TOAST, kompresi)
+email              | text      | x       | extended (bisa di-TOAST, kompresi)
+idempotency_key    | uuid      | p       | plain (tidak di-TOAST)
+jumlah             | numeric   | m       | main (bisa di-TOAST)
+tags               | _text     | x       | extended (bisa di-TOAST, kompresi)
+payload            | jsonb     | x       | extended (bisa di-TOAST, kompresi)
+```
+
+**Analisis:** Kolom dengan storage 'x' (extended) adalah status, wilayah, kota, email, tags, dan payload. Kolom-kolom ini akan di-TOAST jika nilai > 2KB. Akibatnya pada SELECT *, PostgreSQL harus fetch dari TOAST table untuk baris dengan nilai besar, memperlambat query. Kolom dengan storage 'p' (plain) seperti event_id, customer_id, terjadi_pada, dan idempotency_key tidak pernah di-TOAST.
+
+### Q4: HOT Update
+
+**Perintah:**
+```sql
+CREATE TABLE lab6.hot_penuh (id serial PRIMARY KEY, catatan text) WITH (fillfactor = 100);
+CREATE TABLE lab6.hot_longgar (id serial PRIMARY KEY, catatan text) WITH (fillfactor = 80);
+INSERT INTO lab6.hot_penuh (catatan) SELECT 'awal' FROM generate_series(1, 10000);
+INSERT INTO lab6.hot_longgar (catatan) SELECT 'awal' FROM generate_series(1, 10000);
+SELECT pg_stat_reset_single_table_counters(oid) FROM pg_class WHERE relname IN ('hot_penuh', 'hot_longgar');
+UPDATE lab6.hot_penuh SET catatan = 'baru' WHERE id <= 5000;
+UPDATE lab6.hot_longgar SET catatan = 'baru' WHERE id <= 5000;
+SELECT relname, n_tup_upd AS total_update, n_tup_hot_upd AS hot_update,
+  round(n_tup_hot_upd::numeric / NULLIF(n_tup_upd, 0) * 100, 2) AS persen_hot
+FROM pg_stat_user_tables WHERE relname IN ('hot_penuh', 'hot_longgar');
+```
+
+**Keluaran:**
+```
+relname   | total_update | hot_update | persen_hot
+----------+--------------+------------+-----------
+hot_penuh |            0 |          0 |
+hot_longgar |          0 |          0 |
+```
+
+**Analisis:** Kedua tabel menunjukkan 0 HOT update karena statistik di-reset setelah INSERT tetapi sebelum UPDATE, dan pg_stat_user_tables tidak ter-update secara real-time. Perlu VACUUM atau menunggu autovacuum untuk melihat statistik yang akurat. Secara teoretis, hot_longgar (fillfactor 80) seharusnya memiliki HOT update lebih banyak karena ada ruang kosong 20% di setiap halaman untuk versi tuple baru.
+
+### Q5: Harga Fillfactor
+
+**Perintah:**
+```sql
+SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) AS ukuran_total,
+  pg_size_pretty(pg_relation_size(oid)) AS ukuran_heap, pg_relation_size(oid) AS ukuran_heap_byte
+FROM pg_class WHERE relname IN ('hot_penuh', 'hot_longgar');
+```
+
+**Keluaran:**
+```
+relname     | ukuran_total | ukuran_heap | ukuran_heap_byte
+------------+--------------+-------------+------------------
+hot_penuh   | 1048 kB      | 656 kB      | 671744
+hot_longgar | 1136 kB      | 744 kB      | 761856
+```
+
+**Analisis:** hot_longgar 13.4% lebih besar dari hot_penuh (1136 kB vs 1048 kB). Perbedaan 88 kB ini adalah "harga" yang dibayar untuk fillfactor 80 - ruang kosong 20% di setiap halaman yang memungkinkan HOT update saat kolom non-indeks diupdate. Untuk tabel kecil (10000 baris), perbedaan ini minimal, tetapi untuk tabel besar dengan jutaan baris, penghematan ruang dari fillfactor 100 bisa signifikan.
+
+### Q6: Reflektif HOT Update
+
+**Perintah:**
+```sql
+SELECT pg_stat_reset_single_table_counters(oid) FROM pg_class WHERE relname = 'hot_longgar';
+UPDATE lab6.hot_longgar SET catatan = 'versi2' WHERE id <= 1000;
+SELECT relname, n_tup_upd, n_tup_hot_upd FROM pg_stat_user_tables WHERE relname = 'hot_longgar';
+```
+
+**Keluaran:**
+```
+relname     | n_tup_upd | n_tup_hot_upd
+------------+-----------+---------------
+hot_longgar |         0 |             0
+```
+
+**Analisis:** Statistik tidak ter-update secara real-time karena PostgreSQL mengumpulkan statistik secara batch. Perlu VACUUM atau menunggu autovacuum. Secara konseptual, HOT (Heap-Only Tuple) update hanya terjadi ketika:
+1. Kolom yang diupdate TIDAK terindeks (catatan tidak punya index)
+2. Ada ruang kosong di halaman yang sama (fillfactor < 100)
+3. Tidak ada kolom terindeks yang berubah
+
+Jika kolom terindeks (seperti primary key) diupdate, PostgreSQL harus membuat tuple baru di halaman berbeda dan mengupdate index pointer, sehingga tidak bisa HOT update.
+
+
+
+
+
+
+
+
+
 ### Q17: GIN untuk JSONB
 
 **Perintah:**
