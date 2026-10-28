@@ -145,3 +145,44 @@ Kelompok kami pakai bantuan AI buat nyusun struktur laporan, bikin pseudocode re
 
 ## Tautan Merge Request
 
+**Q12. Pembaruan Atomik**
+Kami perbaiki lost update di Q10 dengan pakai `UPDATE ... SET saldo = saldo - 10000`. Karena PostgreSQL ngunci baris pas di-UPDATE, SESI_B otomatis nunggu SESI_A selesai. Jadi perhitungannya berdasarkan nilai terbaru, dan lost update gak terjadi.
+
+**Q13. SELECT ... FOR UPDATE**
+SESI_A kunci baris pakai `FOR UPDATE`. Pas SESI_B coba update baris yang sama, terminal SESI_B nunggu (blocking) sampai SESI_A COMMIT. Ini cara aman buat nge-lock baris biar gak diubah sesi lain.
+
+**Q14. Optimistic Locking**
+Kami tambah kolom `version_no`. SESI_A dan SESI_B sama-sama baca `version_no = 1`. SESI_A update dan ubah `version_no` jadi 2. Pas SESI_B coba update dengan syarat `version_no = 1`, update-nya gagal (0 rows affected). Aplikasi jadi tau kalau datanya udah diubah orang lain.
+
+**Q15. MVCC**
+SESI_A baca saldo, lalu SESI_B update saldo tapi belum COMMIT. Pas SESI_A baca lagi, nilainya tetap yang lama. Ini bukti MVCC: pembaca liat snapshot data tanpa perlu nunggu penulis selesai.
+
+**Q16. xmin dan xmax**
+Kami cek kolom `xmin` dan `xmax`. `xmin` itu ID transaksi yang bikin baris itu, `xmax` itu ID transaksi yang ngapus baris itu (0 kalau belum diapus). Ini metadata internal buat MVCC, bukan data bisnis.
+
+**Q17. Manfaat MVCC dan VACUUM**
+MVCC bikin pembaca gak nge-blok penulis, dan sebaliknya. Tapi karena MVCC nyimpen versi lama dari baris yang di-update, tabel bisa jadi bengkak. Makanya butuh VACUUM buat bersihin versi lama yang udah gak kepake.
+
+---
+
+## Q18-Q23: Row Lock, Deadlock, dan Antrean Lock
+
+**Q18. Perbandingan Lock Mode**
+Kami coba `FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, dan `FOR KEY SHARE`. `FOR UPDATE` itu yang paling ketat dan nge-blok semua lock lain. `FOR KEY SHARE` paling longgar, biasanya buat cek foreign key.
+
+**Q19. Lock Waiting**
+SESI_A lock baris, SESI_B coba lock baris yang sama. SESI_B cuma nunggu aja, gak error. Pas SESI_A COMMIT, SESI_B langsung dapet lock. Ini namanya antrean lock, bukan deadlock.
+
+**Q20. Deadlock**
+SESI_A lock rekening 1, SESI_B lock rekening 2. Terus SESI_A minta lock rekening 2, dan SESI_B minta lock rekening 1. PostgreSQL langsung deteksi ini deadlock dan nge-kill SESI_B dengan error `SQLSTATE 40P01`.
+
+**Q21. Mencegah Deadlock**
+Kami ulang skenario tadi, tapi kedua sesi sekarang lock dari ID terkecil ke terbesar (1 lalu 2). Hasilnya, gak ada deadlock. SESI_B cuma nunggu SESI_A selesai. Urutan lock yang konsisten itu kunci buat ngehindarin deadlock.
+
+**Q22. Deadlock vs Antrean Lock Panjang**
+Deadlock itu circular wait (saling nunggu) dan pasti ada yang di-kill. Antrean lock panjang itu linear wait (antri biasa), gak ada error, tapi bisa bikin aplikasi lemot kalau gak dikasih timeout.
+
+**Q23. Macam-macam Timeout**
+`lock_timeout` buat batasin nunggu lock. `statement_timeout` buat batasin lama query jalan. `idle_in_transaction_session_timeout` buat nge-kill sesi yang lupa COMMIT/ROLLBACK. `deadlock_timeout` itu settingan server buat nentuin kapan PostgreSQL mulai ngecek deadlock.
+
+---
