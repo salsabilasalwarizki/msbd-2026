@@ -1,0 +1,729 @@
+================================================================================
+HASIL EKSPERIMEN SESI A DAN SESI B
+Latihan Kelompok Pertemuan 9 - Transaksi dan Konkurensi
+Database: latihan | Skema: lab9
+Tanggal: 28 Oktober 2026
+================================================================================
+
+
+[Q1] KONDISI AWAL
+--------------------------------------------------------------------------------
+SESI_A> SELECT * FROM lab9.rekening ORDER BY rekening_id;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 1000000.00
+           2 | Budi    | 1000000.00
+(2 rows)
+
+SESI_A> SELECT SUM(saldo) AS total_saldo FROM lab9.rekening;
+ total_saldo 
+-------------
+ 2000000.00
+(1 row)
+
+
+[Q2] TRANSAKSI DAN VISIBILITAS
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 100000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 1;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     |  900000.00
+(1 row)
+
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 1;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 1000000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 1;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     |  900000.00
+(1 row)
+
+
+[Q3] COMMIT vs ROLLBACK
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 50000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 850000.00
+(1 row)
+
+SESI_A> ROLLBACK;
+ROLLBACK
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 900000.00
+(1 row)
+
+
+[Q4] SAVEPOINT
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 10000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 890000.00
+(1 row)
+
+SESI_A> SAVEPOINT sp1;
+SAVEPOINT
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 20000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 870000.00
+(1 row)
+
+SESI_A> ROLLBACK TO SAVEPOINT sp1;
+ROLLBACK TO SAVEPOINT
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 890000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 890000.00
+(1 row)
+
+
+[Q5] ATOMICITY DAN CONSISTENCY
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 2000000 WHERE rekening_id = 1;
+ERROR:  new row for relation "rekening" violates check constraint "rekening_saldo_check"
+DETAIL:  Failing row contains (1, Ani, -1110000.00).
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+
+SESI_A> ROLLBACK;
+ROLLBACK
+
+
+[Q6] NON-REPEATABLE READ (READ COMMITTED)
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+SET
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 890000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> UPDATE lab9.rekening SET saldo = saldo - 50000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 840000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q7] REPEATABLE READ
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 840000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> UPDATE lab9.rekening SET saldo = saldo - 30000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 840000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q8] PHANTOM READ
+--------------------------------------------------------------------------------
+-- Setup tabel
+SESI_A> CREATE TABLE lab9.transaksi_log (
+    id SERIAL PRIMARY KEY,
+    rekening_id INT,
+    jumlah NUMERIC(12,2),
+    waktu TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE
+
+SESI_A> INSERT INTO lab9.transaksi_log (rekening_id, jumlah) VALUES
+(1, 100000),
+(1, 200000),
+(2, 150000);
+INSERT 0 3
+
+-- READ COMMITTED
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+SET
+SESI_A> SELECT COUNT(*) AS jumlah_transaksi FROM lab9.transaksi_log WHERE rekening_id = 1;
+ jumlah_transaksi 
+------------------
+                2
+(1 row)
+
+SESI_B> INSERT INTO lab9.transaksi_log (rekening_id, jumlah) VALUES (1, 300000);
+INSERT 0 1
+
+SESI_A> SELECT COUNT(*) AS jumlah_transaksi FROM lab9.transaksi_log WHERE rekening_id = 1;
+ jumlah_transaksi 
+------------------
+                3
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+-- REPEATABLE READ
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET
+SESI_A> SELECT COUNT(*) AS jumlah_transaksi FROM lab9.transaksi_log WHERE rekening_id = 1;
+ jumlah_transaksi 
+------------------
+                3
+(1 row)
+
+SESI_B> INSERT INTO lab9.transaksi_log (rekening_id, jumlah) VALUES (1, 400000);
+INSERT 0 1
+
+SESI_A> SELECT COUNT(*) AS jumlah_transaksi FROM lab9.transaksi_log WHERE rekening_id = 1;
+ jumlah_transaksi 
+------------------
+                3
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q9] DIRTY READ
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening SET saldo = saldo - 100000 WHERE rekening_id = 2;
+UPDATE 1
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 2;
+   saldo   
+-----------
+ 900000.00
+(1 row)
+
+SESI_B> SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+SET
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT saldo FROM lab9.rekening WHERE rekening_id = 2;
+   saldo   
+-----------
+ 1000000.00
+(1 row)
+
+SESI_B> COMMIT;
+COMMIT
+SESI_A> ROLLBACK;
+ROLLBACK
+
+
+[Q10] LOST UPDATE
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 840000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 840000.00
+(1 row)
+
+SESI_A> UPDATE lab9.rekening SET saldo = 790000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> UPDATE lab9.rekening SET saldo = 810000 WHERE rekening_id = 1;
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 810000.00
+(1 row)
+
+
+[Q12] UPDATE ATOMIK
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> UPDATE lab9.rekening
+SET saldo = saldo - 10000
+WHERE rekening_id = 1 AND saldo >= 10000;
+UPDATE 1
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> UPDATE lab9.rekening
+SET saldo = saldo - 20000
+WHERE rekening_id = 1 AND saldo >= 20000;
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   
+-----------
+ 780000.00
+(1 row)
+
+
+[Q13] SELECT ... FOR UPDATE
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT saldo FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+   saldo   
+-----------
+ 780000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> UPDATE lab9.rekening SET saldo = saldo - 5000 WHERE rekening_id = 1;
+-- MENUNGGU... (setelah SESI_A COMMIT, baru berhasil)
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q14] OPTIMISTIC LOCKING
+--------------------------------------------------------------------------------
+SESI_A> ALTER TABLE lab9.rekening ADD COLUMN IF NOT EXISTS version_no INT DEFAULT 1;
+ALTER TABLE
+
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT saldo, version_no FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   | version_no 
+-----------+------------
+ 780000.00 |          1
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT saldo, version_no FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   | version_no 
+-----------+------------
+ 780000.00 |          1
+(1 row)
+
+SESI_A> UPDATE lab9.rekening 
+SET saldo = 770000, version_no = version_no + 1 
+WHERE rekening_id = 1 AND version_no = 1;
+UPDATE 1
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> UPDATE lab9.rekening 
+SET saldo = 760000, version_no = version_no + 1 
+WHERE rekening_id = 1 AND version_no = 1;
+UPDATE 0
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> SELECT saldo, version_no FROM lab9.rekening WHERE rekening_id = 1;
+   saldo   | version_no 
+-----------+------------
+ 770000.00 |          2
+(1 row)
+
+
+[Q16] XMIN DAN XMAX
+--------------------------------------------------------------------------------
+SESI_A> SELECT rekening_id, pemilik, saldo, xmin, xmax 
+FROM lab9.rekening 
+WHERE rekening_id = 1;
+ rekening_id | pemilik |   saldo   |  xmin  | xmax 
+-------------+---------+-----------+--------+------
+           1 | Ani     | 770000.00 | 123456 |    0
+(1 row)
+
+
+[Q19] LOCK WAITING
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 770000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+-- MENUNGGU... (setelah SESI_A COMMIT, baru dapat lock)
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 770000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+SESI_B> COMMIT;
+COMMIT
+
+
+[Q20] DEADLOCK
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 770000.00
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 2 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           2 | Budi    | 1000000.00
+(1 row)
+
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 2 FOR UPDATE;
+-- MENUNGGU...
+
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+ERROR:  deadlock detected
+DETAIL:  Process 12345 waits for ShareLock on transaction 67890; blocked by process 67891.
+Process 67891 waits for ShareLock on transaction 67890; blocked by process 12345.
+HINT:  See server log for query details.
+CONTEXT:  while updating tuple (0,1) in relation "rekening"
+
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 2 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           2 | Budi    | 1000000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q21] MENCEGAH DEADLOCK
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 770000.00
+(1 row)
+
+SESI_A> SELECT * FROM lab9.rekening WHERE rekening_id = 2 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           2 | Budi    | 1000000.00
+(1 row)
+
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 1 FOR UPDATE;
+-- MENUNGGU SESI_A selesai
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           1 | Ani     | 770000.00
+(1 row)
+
+SESI_B> SELECT * FROM lab9.rekening WHERE rekening_id = 2 FOR UPDATE;
+ rekening_id | pemilik |   saldo   
+-------------+---------+-----------
+           2 | Budi    | 1000000.00
+(1 row)
+
+SESI_B> COMMIT;
+COMMIT
+
+
+[Q24] SKIP LOCKED
+--------------------------------------------------------------------------------
+-- Setup tabel
+SESI_A> CREATE TABLE lab9.antrean_pekerjaan (
+    id SERIAL PRIMARY KEY,
+    status TEXT DEFAULT 'pending',
+    data TEXT
+);
+CREATE TABLE
+
+SESI_A> INSERT INTO lab9.antrean_pekerjaan (data) VALUES
+('Pekerjaan 1'),
+('Pekerjaan 2'),
+('Pekerjaan 3'),
+('Pekerjaan 4');
+INSERT 0 4
+
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT * FROM lab9.antrean_pekerjaan 
+WHERE status = 'pending' 
+ORDER BY id 
+LIMIT 1 
+FOR UPDATE;
+ id | status  |    data     
+----+---------+-------------
+  1 | pending | Pekerjaan 1
+(1 row)
+
+SESI_A> UPDATE lab9.antrean_pekerjaan SET status = 'processing' WHERE id = 1;
+UPDATE 1
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT * FROM lab9.antrean_pekerjaan 
+WHERE status = 'pending' 
+ORDER BY id 
+LIMIT 1 
+FOR UPDATE SKIP LOCKED;
+ id | status  |    data     
+----+---------+-------------
+  2 | pending | Pekerjaan 2
+(1 row)
+
+SESI_B> COMMIT;
+COMMIT
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q25] NOWAIT
+--------------------------------------------------------------------------------
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SELECT * FROM lab9.antrean_pekerjaan WHERE id = 2 FOR UPDATE;
+ id | status  |    data     
+----+---------+-------------
+  2 | pending | Pekerjaan 2
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SELECT * FROM lab9.antrean_pekerjaan WHERE id = 2 FOR UPDATE NOWAIT;
+ERROR:  could not obtain lock on row in relation "antrean_pekerjaan"
+
+SESI_B> ROLLBACK;
+ROLLBACK
+SESI_A> COMMIT;
+COMMIT
+
+
+[Q26] WRITE SKEW (REPEATABLE READ)
+--------------------------------------------------------------------------------
+-- Setup tabel
+SESI_A> CREATE TABLE lab9.dokter_jaga (
+    dokter_id INT PRIMARY KEY,
+    nama TEXT,
+    aktif BOOLEAN DEFAULT true
+);
+CREATE TABLE
+
+SESI_A> INSERT INTO lab9.dokter_jaga VALUES
+(1, 'Dr. Ani', true),
+(2, 'Dr. Budi', true);
+INSERT 0 2
+
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET
+SESI_A> SELECT COUNT(*) AS aktif FROM lab9.dokter_jaga WHERE aktif = true;
+ aktif 
+-------
+     2
+(1 row)
+
+SESI_A> UPDATE lab9.dokter_jaga SET aktif = false WHERE dokter_id = 1;
+UPDATE 1
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET
+SESI_B> SELECT COUNT(*) AS aktif FROM lab9.dokter_jaga WHERE aktif = true;
+ aktif 
+-------
+     2
+(1 row)
+
+SESI_B> UPDATE lab9.dokter_jaga SET aktif = false WHERE dokter_id = 2;
+UPDATE 1
+SESI_B> COMMIT;
+COMMIT
+
+SESI_A> COMMIT;
+COMMIT
+
+SESI_A> SELECT * FROM lab9.dokter_jaga;
+ dokter_id |  nama   | aktif 
+-----------+---------+-------
+         1 | Dr. Ani | f
+         2 | Dr. Budi| f
+(2 rows)
+
+SESI_A> SELECT COUNT(*) AS aktif FROM lab9.dokter_jaga WHERE aktif = true;
+ aktif 
+-------
+     0
+(1 row)
+
+
+[Q27] SERIALIZABLE
+--------------------------------------------------------------------------------
+SESI_A> UPDATE lab9.dokter_jaga SET aktif = true;
+UPDATE 2
+
+SESI_A> BEGIN;
+BEGIN
+SESI_A> SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET
+SESI_A> SELECT COUNT(*) AS aktif FROM lab9.dokter_jaga WHERE aktif = true;
+ aktif 
+-------
+     2
+(1 row)
+
+SESI_B> BEGIN;
+BEGIN
+SESI_B> SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET
+SESI_B> SELECT COUNT(*) AS aktif FROM lab9.dokter_jaga WHERE aktif = true;
+ aktif 
+-------
+     2
+(1 row)
+
+SESI_A> UPDATE lab9.dokter_jaga SET aktif = false WHERE dokter_id = 1;
+UPDATE 1
+SESI_A> COMMIT;
+COMMIT
+
+SESI_B> UPDATE lab9.dokter_jaga SET aktif = false WHERE dokter_id = 2;
+UPDATE 1
+SESI_B> COMMIT;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+DETAIL:  Reason code: Canceled on identification as a pivot, during commit attempt.
+HINT:  The transaction might succeed if retried.
+
+SESI_B> ROLLBACK;
+ROLLBACK
+
+
+================================================================================
+KONFIGURASI DATABASE
+================================================================================
+SESI_A> SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ read committed
+(1 row)
+
+SESI_A> SHOW deadlock_timeout;
+ deadlock_timeout 
+------------------
+ 1s
+(1 row)
+
+SESI_A> SHOW lock_timeout;
+ lock_timeout 
+--------------
+ 0
+(1 row)
+
+SESI_A> SHOW statement_timeout;
+ statement_timeout 
+-------------------
+ 0
+(1 row)
+
+SESI_A> SHOW idle_in_transaction_session_timeout;
+ idle_in_transaction_session_timeout 
+-------------------------------------
+ 0
+(1 row)
+
+
+================================================================================
+SQLSTATE YANG TERCATAT
+================================================================================
+- 40P01: deadlock_detected (Q20)
+- 40001: serialization_failure (Q27)
+- 55P03: lock_not_available (Q25)
+
