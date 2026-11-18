@@ -1,0 +1,11 @@
+-- Diminta: menangani bagian query yang tidak bisa diparameterkan (nama kolom atau arah urut) dengan daftar putih tertutup; buktikan nilai di luar daftar ditolak.
+-- Dipilih: kamus tertutup KOLOM dan ARAH di rentan.py. Nilai di luar kamus ditolak sebelum koneksi ke basis data dibuka.
+-- Alternatif: menyisipkan parameter pengurutan langsung ke string SQL; tidak dipilih karena klausa ORDER BY rentan injeksi.
+--
+-- Bukti penolakan (kontainer lab11-web). Payload di sini hanya teks, tidak dieksekusi ke basis data:
+--   python -c "import rentan; print(rentan.cari_aman('zz', kolom='nama; SELECT 1 --'))"
+--   harapkan: ValueError: parameter pengurutan tidak dikenal
+--
+-- Lapis kedua di sisi SQL: pengenal diberi %I dan arah diambil dari kamus tertutup ARAH.
+SELECT format('SELECT id, nama, kota FROM lab11.pelanggan ORDER BY %I %s LIMIT 5', 'nama', 'ASC') AS contoh_query_aman;
+-- %s hanya aman karena nilainya datang dari kamus tertutup, bukan dari masukan pengguna.
