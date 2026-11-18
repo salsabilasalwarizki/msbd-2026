@@ -350,7 +350,22 @@ Dengan RLS aktif, penyaring `WHERE tenant_id` di aplikasi tetap diperlukan sebag
 | **K5**: Permintaan hapus datang, tetapi data masih hidup di salinan dan audit | Pasal 8, Pasal 31, & Pasal 43 | Tabel `permintaan_hapus` bertenggat 72 jam, penghapusan berjenjang, dan audit terukur. | Q25–Q29 |
 
 ---
+### Refleksi E
+Jejak audit yang memuat NIK lama menimbulkan ketegangan hukum antara **Pasal 31 UU PDP** (kewajiban merekam seluruh aktivitas pemrosesan) dan **Pasal 43 UU PDP** (kewajiban menghapus data pribadi atas permintaan subjek). Solusi yang dapat dipertahankan di hadapan pemeriksa adalah melakukan pseudonimisasi/anonimisasi pada nilai atribut sensitif di tabel audit setelah jangka waktu retensi tertentu terpenuhi, tanpa melanggar integritas rekam jejak sistem.
 
+---
+
+## Peta Tiket #1134 ke UU Nomor 27 Tahun 2022 (UU PDP)
+
+| Keluhan | Pasal Relevan | Kontrol Teknis Pencegah (Lab 11) | Bukti |
+|---|---|---|---|
+| **K1**: Satu akun memegang seluruh kunci dan menjalankan `DROP TABLE` | Pasal 35 & Pasal 39 | Pemisahan peran berlapis: pemilik skema tidak login; aplikasi memakai peran terbatas. | Q1–Q5 |
+| **K2**: Penyewa A membaca data penyewa B akibat lupa `WHERE tenant_id` | Pasal 35 & Pasal 39 | Penerapan RLS dengan `FORCE ROW LEVEL SECURITY` dan konteks transaksi `SET LOCAL`. | Q6–Q11 |
+| **K3**: Kotak pencarian rentan SQL injection dan membuka seluruh tabel | Pasal 35 | Pemisahan saluran perintah dan data melalui query berparameter (`$1`) serta daftar putih. | Q12–Q16 |
+| **K4**: Berkas cadangan berpindah ke laptop analis tanpa perlindungan | Pasal 35 & Pasal 36 | Enkripsi kolom (`pgcrypto`) serta tampilan tersamar (`v_pelanggan_samar`) tanpa akses tabel mentah. | Q19–Q24 |
+| **K5**: Permintaan hapus datang, tetapi data masih hidup di salinan dan audit | Pasal 8, Pasal 31, & Pasal 43 | Tabel `permintaan_hapus` bertenggat 72 jam, penghapusan berjenjang, dan audit terukur. | Q25–Q29 |
+
+---
 ## Pernyataan Etika
 Seluruh percobaan serangan hanya dijalankan pada kontainer lab11 milik sendiri di jaringan tertutup.
 
