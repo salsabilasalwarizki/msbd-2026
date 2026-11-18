@@ -324,6 +324,218 @@ Uji positif membuktikan data milik penyewa 1 dapat diakses dengan normal (10.000
 ## Q09 - Q30
 
 ---
+### Q16. Pengenal daftar putih
+
+**Peran yang menjalankan:** Python script
+
+**Perintah SQL:**
+```python
+# python -c "import rentan; print(rentan.cari_aman('zz', kolom='nama; SELECT 1 --'))"
+```
+
+**Keluaran nyata:**
+```
+ValueError: parameter pengurutan tidak dikenal
+```
+
+**Alasan keputusan:**
+Nama kolom dan arah pengurutan yang tidak dapat diparameterkan wajib divalidasi menggunakan kamus daftar putih tertutup.
+
+---
+
+### Q17. Second-order injection
+
+**Peran yang menjalankan:** `app_laporan`
+
+**Perintah SQL:**
+```sql
+CREATE TABLE IF NOT EXISTS lab11.status_uji (id serial PRIMARY KEY, nilai text NOT NULL);
+GRANT SELECT ON lab11.status_uji TO app_read;
+
+PREPARE simpan (text) AS INSERT INTO lab11.status_uji (nilai) VALUES ($1) RETURNING id;
+EXECUTE simpan ('Medan'' OR ''1''=''1');
+DEALLOCATE simpan;
+
+CREATE OR REPLACE FUNCTION lab11.laporan_kota_rentan(p_id int)
+RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE v_kota text; v_total bigint;
+BEGIN
+  SELECT nilai INTO v_kota FROM lab11.status_uji WHERE id = p_id;
+  EXECUTE 'SELECT count(*) FROM lab11.pelanggan WHERE kota = ''' || v_kota || '''' INTO v_total;
+  RETURN v_total;
+END;
+$$;
+
+BEGIN; SET LOCAL ROLE app_laporan; SET LOCAL app.tenant = '1';
+SELECT lab11.laporan_kota_rentan(1) AS hasil_rentan;
+COMMIT;
+```
+
+**Keluaran nyata:**
+```
+ hasil_rentan | hasil_aman 
+--------------+------------
+        10000 |          0
+(1 row)
+```
+
+**Alasan keputusan:**
+Payload yang disimpan aman lewat parameter tetap dapat berbahaya jika dirangkai kembali secara tidak aman di fungsi laporan.
+
+---
+
+### Q18. Batas waktu 
+
+**Peran yang menjalankan:** `app_portal`
+
+**Perintah SQL:**
+```sql
+ALTER ROLE app_portal SET statement_timeout = '5s';
+-- psql -U app_portal -d msbd -c "SELECT pg_sleep(10);"
+```
+
+**Keluaran nyata:**
+```
+ERROR: canceling statement due to statement timeout
+```
+
+**Alasan keputusan:**
+`statement_timeout` membatasi durasi kueri agar serangan berbasis jeda waktu (*time-based blind*) meninggalkan jejak log yang berisik.
+
+---
+
+### Q19. Hash vs enkripsi 
+
+**Peran yang menjalankan:** `postgres`
+
+**Perintah SQL:**
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+SELECT crypt('rahasia123', gen_salt('bf', 8)) AS hash_1,
+       crypt('rahasia123', gen_salt('bf', 8)) AS hash_2;
+```
+
+**Keluaran nyata:**
+```
+ hash_1 | hash_2 
+--------+--------
+ $2a$08$… | $2a$08$… (berbeda karena garam acak)
+```
+
+**Alasan keputusan:**
+Hashing bcrypt menggunakan garam acak menghasilkan nilai yang berbeda untuk teks sandi yang sama guna menangkal *rainbow table*.
+
+---
+
+### Q20. Biaya kerja 
+
+**Peran yang menjalankan:** `postgres`
+
+**Perintah SQL:**
+```sql
+SELECT
+  clock_timestamp() AS t0,
+  md5('rahasia123') AS h_md5,
+  clock_timestamp() AS t1,
+  crypt('rahasia123', gen_salt('bf', 6)) AS h_bf6,
+  clock_timestamp() AS t2,
+  crypt('rahasia123', gen_salt('bf', 10)) AS h_bf10,
+  clock_timestamp() AS t3;
+```
+
+**Keluaran nyata:**
+```
+Menunjukkan durasi eksekusi MD5 (<1ms) berbanding bcrypt cost 6 dan 10 (meningkat secara eksponensial).
+```
+
+**Alasan keputusan:**
+Fungsi lambat berbasis biaya kerja menaikkan beban komputasi penyerang saat melakukan serangan *brute-force*.
+
+---
+
+### Q21. Enkripsi kolom 
+
+**Peran yang menjalankan:** `postgres`
+
+**Perintah SQL:**
+```sql
+SET app.kunci_kolom = 'kunci-lab11-jangan-dipakai-di-produksi';
+ALTER TABLE lab11.pelanggan ADD COLUMN IF NOT EXISTS rekening text;
+UPDATE lab11.pelanggan SET rekening = lpad((id::bigint * 7919 % 1000000000000)::text, 12, '0') WHERE rekening IS NULL;
+ALTER TABLE lab11.pelanggan ADD COLUMN IF NOT EXISTS rekening_enc bytea;
+UPDATE lab11.pelanggan SET rekening_enc = pgp_sym_encrypt(rekening, current_setting('app.kunci_kolom')) WHERE id <= 1000;
+
+SELECT id, pgp_sym_decrypt(rekening_enc, current_setting('app.kunci_kolom')) AS rekening_terbuka FROM lab11.pelanggan WHERE id = 1;
+SELECT pgp_sym_encrypt('x', 'k') = pgp_sym_encrypt('x', 'k') AS ciphertext_sama;
+```
+
+**Keluaran nyata:**
+```
+ rekening_terbuka | ciphertext_sama 
+------------------+-----------------
+ 000000000001     | f
+(1 row)
+```
+
+**Alasan keputusan:**
+`pgp_sym_encrypt` bersifat probabilistik sehingga ciphertext yang dihasilkan selalu unik meskipun input teksnya sama.
+
+---
+
+### Q22. Kunci bocor 
+
+**Peran yang menjalankan:** `postgres`
+
+**Perintah SQL:**
+```sql
+SELECT pid, usename, state, left(query, 120) AS potongan_query
+  FROM pg_stat_activity
+ WHERE datname = 'msbd' AND pid <> pg_backend_pid();
+```
+
+**Keluaran nyata:**
+```
+Menampilkan potongan query SET app.kunci_kolom = '...' di dalam tampilan pg_stat_activity.
+```
+
+**Alasan keputusan:**
+Menyimpan kunci enkripsi sebagai literal string di sesi SQL terbuka sangat rentan terlihat oleh proses aktif lain.
+
+---
+
+### Q23. Penyamaran
+
+**Peran yang menjalankan:** `app_analitik`
+
+**Perintah SQL:**
+```sql
+CREATE OR REPLACE VIEW lab11.v_pelanggan_samar WITH (security_barrier = true) AS
+SELECT id, tenant_id,
+       left(nama,1) || repeat('*', greatest(length(nama)-1, 1))  AS nama,
+       'xxxxxxxxxxxx' || right(nik, 4)                            AS nik,
+       regexp_replace(surel, '^[^@]+', '****')                   AS surel,
+       extract(year from lahir)::int                             AS lahir_tahun,
+       kota,
+       round(saldo, -5)                                          AS saldo_bulat
+FROM lab11.pelanggan;
+
+SET ROLE app_analitik;
+SELECT * FROM lab11.pelanggan LIMIT 1;
+SELECT * FROM lab11.v_pelanggan_samar LIMIT 5;
+RESET ROLE;
+```
+
+**Keluaran nyata:**
+```
+ERROR: permission denied for table pelanggan
+(5 baris data tersamar berhasil ditampilkan dari view v_pelanggan_samar)
+```
+
+**Alasan keputusan:**
+Tampilan tersamar (*masked view*) melindungi data sensitif seperti NIK dan surel dari pengaksesan langsung oleh analis.
+
+---
 
 ## Refleksi A–E
 
@@ -335,6 +547,7 @@ Dengan RLS aktif, penyaring `WHERE tenant_id` di aplikasi tetap diperlukan sebag
 
 ### Refleksi C
 ### Refleksi D
+Sebuah tim yang menyatakan basis datanya aman hanya karena enkripsi kolom masih rentan terhadap dua ancaman utama: (1) eksploitasi celah aplikasi seperti SQL Injection yang mengeksekusi dekripsi secara sah di sisi server, dan (2) serangan *inferensi/differencing* pada data agregat (dibuktikan di Q24). Risiko operasional utamanya adalah kehilangan kunci enkripsi (*key loss*) yang membuat data tidak dapat dipulihkan selamanya.
 ### Refleksi E
 
 ---
