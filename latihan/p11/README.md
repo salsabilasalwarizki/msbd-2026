@@ -3,10 +3,10 @@
 Seluruh hasil disimpan di `latihan/p11/`. Percobaan hanya dijalankan pada kontainer lab11 milik sendiri di jaringan internal tertutup.
 
 ## Prasyarat
-- Docker dan Docker Compose terpasang.
-- `docker-compose.lab11.yml` dan `sql/lab11_setup.sql` dari modul praktikum (tidak ada di folder ini; jalankan apa adanya).
-- Python 3 dengan `psycopg` (versi 3) di dalam kontainer `lab11-web`: `pip install "psycopg[binary]"`.
-- `pgcrypto` dibuat di basis data `msbd` (dijalankan di Q19; ekstensi bersifat per basis data).
+1. Docker dan Docker Compose terpasang.
+2. `docker-compose.lab11.yml` dan `sql/lab11_setup.sql` dari modul praktikum (tidak ada di folder ini; jalankan apa adanya).
+3. Python 3 dengan `psycopg` (versi 3) di dalam kontainer `lab11-web`: `pip install "psycopg[binary]"`.
+4. `pgcrypto` dibuat di basis data `msbd` (dijalankan di Q19; ekstensi bersifat per basis data).
 
 ## Menyalakan Kontainer dan Memuat Skema
 ```bash
@@ -31,10 +31,3 @@ docker network inspect lab11_labnet --format '{{.Internal}}'   # harapkan: true
 - Keluaran yang ditempel ke laporan harus keluaran nyata dari kontainer sendiri. Angka di komentar "harapkan" hanya pembanding.
 - Jika keluaran berbeda dari harapan, jangan diubah. Tulis perbedaannya dan penjelasannya.
 - Payload percobaan hanya berupa pembacaan (SELECT) dan tidak boleh merusak data penyewa lain. Uji hak yang ditolak memakai `has_table_privilege` bila memungkinkan.
-
-## Anggota Kelompok
-
-*   Salsabila Salwa Rizki (251402123) - Project Manager
-*   Jesqueen Maria Purba (251402099)
-*   Nadia Stevany Br Situmorang (251402073)
-*   Sina Mahdi Sitanggang (251402008)
